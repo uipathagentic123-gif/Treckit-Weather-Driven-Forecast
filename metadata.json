@@ -1,0 +1,6 @@
+{
+  "name": "Weather-Driven Supply Chain Intelligence",
+  "description": "A strategic supply chain and manufacturing advisory tool that analyzes regional weather patterns to optimize product distribution and long-term production planning.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}
