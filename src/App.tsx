@@ -21,8 +21,14 @@ import {
   BarChart3,
   PackageCheck,
   Layers,
-  Sparkles
+  Sparkles,
+  Download,
+  FileText,
+  Table as TableIcon,
+  Boxes
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { fetchWeather, getCoordsFromCity } from './services/weatherService';
 import { analyzeSupplyChain } from './services/geminiService';
 import { SupplyAnalysis, WeatherData } from './types';
@@ -72,6 +78,115 @@ export default function App() {
     }
   };
 
+  const exportToPDF = () => {
+    if (!analysis) return;
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(79, 70, 229); // indigo-600
+    doc.text(`${COMPANY_ALIAS} Strategic Report`, 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Region: ${analysis.currentWeather.locationName}`, 14, 30);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 35);
+    
+    // Weather
+    doc.setFontSize(14);
+    doc.setTextColor(30);
+    doc.text('Current Weather Context', 14, 45);
+    autoTable(doc, {
+      startY: 50,
+      head: [['Temperature', 'Condition', 'Humidity', 'Precipitation', 'Wind Speed']],
+      body: [[
+        `${analysis.currentWeather.temperature.toFixed(1)}°C`,
+        analysis.currentWeather.condition,
+        `${analysis.currentWeather.humidity}%`,
+        `${analysis.currentWeather.precipitation}mm`,
+        `${analysis.currentWeather.windSpeed}km/h`
+      ]],
+    });
+
+    // Demand Distribution (The "Calculations")
+    doc.setFontSize(14);
+    doc.text('Demand Distribution Analysis', 14, (doc as any).lastAutoTable.finalY + 15);
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [['Product', 'Category', 'Recommended Action', 'Demand Index (Calculated)']],
+      body: analysis.productRecommendations.map(p => [
+        p.productName,
+        p.category,
+        p.currentAction,
+        p.currentAction === 'Increase Supply' ? '100 (Peak)' : p.currentAction === 'Maintain Supply' ? '50 (Normal)' : '20 (Low)'
+      ]),
+    });
+
+    // Manufacturing Forecast
+    doc.setFontSize(14);
+    doc.text('Next Quarter Manufacturing Forecast', 14, (doc as any).lastAutoTable.finalY + 15);
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [['Product', 'Forecast Action', 'Confidence level', 'Strategic Note']],
+      body: analysis.manufacturingForecast.map(m => [
+        m.productName,
+        m.forecastAction,
+        `${(m.confidence * 100).toFixed(0)}%`,
+        m.strategicNote
+      ]),
+    });
+
+    // Material Strategy
+    doc.addPage();
+    doc.setFontSize(14);
+    doc.text('Material & Packaging Strategy', 14, 20);
+    autoTable(doc, {
+      startY: 25,
+      head: [['Product', 'Raw Material', 'Packaging', 'Sales Impact Strategy']],
+      body: analysis.materialStrategy.map(ms => [
+        ms.productName,
+        ms.rawMaterial,
+        ms.packagingMaterial,
+        ms.salesImpactNote
+      ]),
+    });
+
+    doc.save(`${COMPANY_ALIAS}_Strategic_Report_${analysis.currentWeather.locationName.replace(/\s+/g, '_')}.pdf`);
+  };
+
+  const exportToExcel = () => {
+    if (!analysis) return;
+    
+    let csvContent = "Type,Product,Category,Value/Action,Detail/Note\n";
+    
+    // Demand
+    analysis.productRecommendations.forEach(p => {
+      const val = p.currentAction === 'Increase Supply' ? '100' : p.currentAction === 'Maintain Supply' ? '50' : '20';
+      csvContent += `Demand,"${p.productName}","${p.category}","${p.currentAction}","${val} Index"\n`;
+    });
+    
+    // Manufacturing
+    analysis.manufacturingForecast.forEach(m => {
+      const product = OBFUSCATED_PRODUCTS.find(p => p.name === m.productName);
+      csvContent += `Manufacturing,"${m.productName}","${product?.category || 'N/A'}","${m.forecastAction}","${m.strategicNote.replace(/"/g, '""')}"\n`;
+    });
+    
+    // Materials
+    analysis.materialStrategy.forEach(ms => {
+      const product = OBFUSCATED_PRODUCTS.find(p => p.name === ms.productName);
+      csvContent += `Materials,"${ms.productName}","${product?.category || 'N/A'}","${ms.rawMaterial}","${ms.packagingMaterial} - ${ms.salesImpactNote.replace(/"/g, '""')}"\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${COMPANY_ALIAS}_Data_${analysis.currentWeather.locationName.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const getActionIcon = (action: string) => {
     switch (action) {
       case 'Increase Supply':
@@ -109,11 +224,11 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-bottom border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
-              <Factory className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100 ring-4 ring-indigo-50 transition-transform hover:scale-105 duration-300">
+              <Boxes className="w-6 h-6 text-white" />
             </div>
-            <span className="font-bold text-xl tracking-tight text-slate-800">{COMPANY_ALIAS}</span>
+            <span className="font-extrabold text-2xl tracking-tighter text-slate-800 bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">{COMPANY_ALIAS}</span>
           </div>
           
           <form onSubmit={handleSearch} className="relative w-full max-w-md hidden sm:block">
@@ -127,7 +242,30 @@ export default function App() {
             />
           </form>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-1">
+              <button
+                onClick={exportToPDF}
+                disabled={!analysis || loading}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:text-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                title="Download PDF Report"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">Report</span>
+                <Download className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+              <button
+                onClick={exportToExcel}
+                disabled={!analysis || loading}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:text-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                title="Download Excel Data"
+              >
+                <TableIcon className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">Excel</span>
+                <Download className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            </div>
+
             <div className="hidden md:flex flex-col items-end">
               <span className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">System Status</span>
               <span className="text-xs font-medium text-emerald-600 flex items-center gap-1">
@@ -503,9 +641,9 @@ export default function App() {
       {/* Footer */}
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 border-t border-slate-200 mt-12">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-2 opacity-50">
-            <Factory className="w-4 h-4" />
-            <span className="text-xs font-bold tracking-widest uppercase">{COMPANY_ALIAS} Systems</span>
+          <div className="flex items-center gap-2 opacity-60 grayscale hover:grayscale-0 transition-all">
+            <Boxes className="w-5 h-5 text-indigo-600" />
+            <span className="text-xs font-bold tracking-widest uppercase text-slate-600">{COMPANY_ALIAS} Systems</span>
           </div>
           <p className="text-xs text-slate-400 max-w-md text-center md:text-right leading-relaxed">
             This intelligence dashboard provides predictive supply chain modeling based on meteorological data. 
@@ -530,7 +668,7 @@ export default function App() {
                   transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                   className="absolute inset-0 border-4 border-indigo-100 border-t-indigo-600 rounded-full"
                 />
-                <Factory className="absolute inset-0 m-auto w-8 h-8 text-indigo-600" />
+                <Boxes className="absolute inset-0 m-auto w-10 h-10 text-indigo-600" />
               </div>
               <h2 className="text-xl font-bold text-slate-800 mb-2">Analyzing Regional Intelligence</h2>
               <p className="text-slate-400 text-sm animate-pulse">Correlating weather patterns with product demand...</p>
